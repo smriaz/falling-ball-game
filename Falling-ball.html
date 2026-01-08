@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Falling Ball Paddle (Single-File Game)</title>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:#0a0f1f;
+      --canvas:#070a14;
+      --text:rgba(255,255,255,.92);
+      --muted:rgba(255,255,255,.65);
+      --border:rgba(255,255,255,.12);
+      --field:rgba(255,255,255,.10);
+      --accent:#ffffff;
+      --shadow: rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      overflow: hidden;
+      color: var(--text);
+    }
+    .wrap {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      box-sizing: border-box;
+      gap: 12px;
+    }
+    .panel {
+      width: min(92vw, 860px);
+      background: color-mix(in oklab, var(--panel) 92%, black);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 12px 30px var(--shadow);
+      padding: 12px 12px;
+      box-sizing: border-box;
+    }
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .row-left, .row-right {
+      display:flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    label { color: var(--muted); }
+
+    select, input[type="color"], button {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.16);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 10px;
+      font: inherit;
+      outline: none;
+    }
+    input[type="color"]{
+      padding: 2px 4px;
+      height: 32px;
+      width: 44px;
+    }
+    button{
+      cursor: pointer;
+      color: var(--text);
+    }
+    button:hover{
+      border-color: rgba(255,255,255,0.28);
+    }
+    .kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      padding: 2px 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+    }
+    .hud {
+      width: min(92vw, 860px);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 10px auto 0;
+      gap: 10px;
+      user-select: none;
+    }
+    .hint { color: var(--muted); font-size: 12px; }
+
+    canvas {
+      background: var(--canvas);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 12px 30px var(--shadow);
+      max-width: min(92vw, 860px);
+      max-height: min(74vh, 640px);
+      width: 860px;
+      height: 540px;
+      image-rendering: crisp-edges;
+      display:block;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <div class="topbar">
+        <div class="row">
+          <div class="row-left">
+            <div class="control">
+              <label for="difficulty"><strong>Difficulty</strong></label>
+              <select id="difficulty" title="Choose difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium" selected>Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <div class="control">
+              <label for="theme"><strong>Theme</strong></label>
+              <select id="theme" title="Choose theme">
+                <option value="midnight" selected>Midnight</option>
+                <option value="light">Light</option>
+                <option value="neon">Neon</option>
+              </select>
+            </div>
+
+            <div class="control">
+              <label for="accent"><strong>Accent</strong></label>
+              <input id="accent" type="color" value="#ffffff" title="Pick accent color">
+            </div>
+          </div>
+
+          <div class="row-right">
+            <button id="resetBtn" title="Restart the game">Restart</button>
+            <button id="clearBestBtn" title="Clear stored best score">Clear Best</button>
+          </div>
+        </div>
+
+        <div class="hint">
+          Move: <span class="kbd">←</span>/<span class="kbd">→</span>
+          &nbsp; Restart: <span class="kbd">Space</span>
+          &nbsp; Pause: <span class="kbd">P</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <canvas id="game" width="860" height="540" aria-label="Falling ball paddle game"></canvas>
+      <div class="hud">
+        <div>
+          <strong>Score:</strong> <span id="score">0</span>
+          <span style="opacity:.55;">•</span>
+          <strong>Best:</strong> <span id="best">0</span>
+        </div>
+        <div class="hint" id="status">Keep it up!</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      // ---------------------------
+      // THEME + SETTINGS
+      // ---------------------------
+      const THEMES = {
+        midnight: {
+          css: {
+            "--bg": "#0b1020",
+            "--panel": "#0a0f1f",
+            "--canvas": "#070a14",
+            "--text": "rgba(255,255,255,.92)",
+            "--muted": "rgba(255,255,255,.65)",
+            "--border": "rgba(255,255,255,.12)",
+            "--field": "rgba(255,255,255,.10)",
+            "--shadow": "rgba(0,0,0,.35)",
+          },
+          colorScheme: "dark",
+          defaultAccent: "#ffffff",
+        },
+        light: {
+          css: {
+            "--bg": "#f3f5ff",
+            "--panel": "#ffffff",
+            "--canvas": "#fbfbff",
+            "--text": "rgba(10,12,25,.92)",
+            "--muted": "rgba(10,12,25,.62)",
+            "--border": "rgba(10,12,25,.14)",
+            "--field": "rgba(10,12,25,.12)",
+            "--shadow": "rgba(0,0,0,.12)",
+          },
+          colorScheme: "light",
+          defaultAccent: "#1f3cff",
+        },
+        neon: {
+          css: {
+            "--bg": "#05060a",
+            "--panel": "#070812",
+            "--canvas": "#04050a",
+            "--text": "rgba(255,255,255,.92)",
+            "--muted": "rgba(200,240,255,.68)",
+            "--border": "rgba(120,255,240,.20)",
+            "--field": "rgba(120,255,240,.18)",
+            "--shadow": "rgba(0,0,0,.45)",
+          },
+          colorScheme: "dark",
+          defaultAccent: "#30ffd6",
+        },
+      };
+
+      // ✅ UPDATED DIFFICULTY SPEEDS:
+      // - Easy: slower than old Easy
+      // - Medium: old Easy
+      // - Hard: old Medium (fastest)
+      const DIFFICULTY = {
+        easy: {
+          label: "Easy",
+          gravity: 900,
+          gravityBoost: 25,
+          baseUp: 620,
+          upBoostPerHit: 10,
+          paddleSpeed: 680,
+          ballRadius: 11,
+          maxVx: 430,
+          vxInfluence: 180,
+        },
+        medium: {
+          label: "Medium",
+          gravity: 1100,
+          gravityBoost: 35,
+          baseUp: 680,
+          upBoostPerHit: 12,
+          paddleSpeed: 640,
+          ballRadius: 11,
+          maxVx: 480,
+          vxInfluence: 210,
+        },
+        hard: {
+          label: "Hard",
+          gravity: 1400,
+          gravityBoost: 55,
+          baseUp: 720,
+          upBoostPerHit: 18,
+          paddleSpeed: 560,
+          ballRadius: 12,
+          maxVx: 520,
+          vxInfluence: 240,
+        },
+      };
+
+      const SETTINGS_KEY = "fallingBallSettings_v1";
+      const BEST_KEY = "fallingBallBest";
+
+      function loadSettings() {
+        try {
+          const raw = localStorage.getItem(SETTINGS_KEY);
+          if (!raw) return { difficulty: "medium", theme: "midnight", accent: "#ffffff" };
+          const s = JSON.parse(raw);
+          return {
+            difficulty: DIFFICULTY[s.difficulty] ? s.difficulty : "medium",
+            theme: THEMES[s.theme] ? s.theme : "midnight",
+            accent: typeof s.accent === "string" ? s.accent : "#ffffff",
+          };
+        } catch {
+          return { difficulty: "medium", theme: "midnight", accent: "#ffffff" };
+        }
+      }
+
+      function saveSettings(s) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+      }
+
+      function applyTheme(themeName) {
+        const theme = THEMES[themeName] || THEMES.midnight;
+        const root = document.documentElement;
+        for (const [k, v] of Object.entries(theme.css)) root.style.setProperty(k, v);
+        root.style.setProperty("color-scheme", theme.colorScheme);
+      }
+
+      function applyAccent(hex) {
+        document.documentElement.style.setProperty("--accent", hex);
+      }
+
+      // ---------------------------
+      // DOM
+      // ---------------------------
+      const difficultySel = document.getElementById("difficulty");
+      const themeSel = document.getElementById("theme");
+      const accentPicker = document.getElementById("accent");
+      const resetBtn = document.getElementById("resetBtn");
+      const clearBestBtn = document.getElementById("clearBestBtn");
+
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const scoreEl = document.getElementById("score");
+      const bestEl = document.getElementById("best");
+      const statusEl = document.getElementById("status");
+
+      // ---------------------------
+      // HiDPI
+      // ---------------------------
+      function setupHiDPI() {
+        const cssW = canvas.clientWidth;
+        const cssH = canvas.clientHeight;
+        const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        canvas.width = Math.floor(cssW * dpr);
+        canvas.height = Math.floor(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      // ---------------------------
+      // GAME STATE
+      // ---------------------------
+      const state = {
+        running: true,
+        paused: false,
+        gameOver: false,
+        score: 0,
+        best: Number(localStorage.getItem(BEST_KEY) || 0),
+
+        lastT: performance.now(),
+
+        left: false,
+        right: false,
+
+        settings: loadSettings(),
+      };
+
+      bestEl.textContent = String(state.best);
+
+      const paddle = { w: 130, h: 16, x: 0, y: 0, speed: 560 };
+      const ball = { r: 12, x: 0, y: 0, vx: 210, vy: 0, justBounced: false };
+
+      let params = DIFFICULTY[state.settings.difficulty];
+
+      function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+      function setDifficulty(name) {
+        params = DIFFICULTY[name] || DIFFICULTY.medium;
+        state.settings.difficulty = name;
+        saveSettings(state.settings);
+        resetGame();
+      }
+
+      function setTheme(name) {
+        state.settings.theme = name;
+        saveSettings(state.settings);
+        applyTheme(name);
+      }
+
+      function setAccent(hex) {
+        state.settings.accent = hex;
+        saveSettings(state.settings);
+        applyAccent(hex);
+      }
+
+      difficultySel.value = state.settings.difficulty;
+      themeSel.value = state.settings.theme;
+      accentPicker.value = state.settings.accent;
+
+      applyTheme(state.settings.theme);
+      applyAccent(state.settings.accent);
+
+      function resetGame() {
+        state.score = 0;
+        state.gameOver = false;
+        state.paused = false;
+        state.running = true;
+        statusEl.textContent = "Keep it up!";
+
+        paddle.speed = params.paddleSpeed;
+        ball.r = params.ballRadius;
+
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+
+        paddle.x = (w - paddle.w) / 2;
+        paddle.y = h - 42;
+
+        ball.x = w / 2;
+        ball.y = 90;
+        ball.vx = (Math.random() < 0.5 ? -1 : 1) * (160 + Math.random() * 120);
+        ball.vy = 0;
+        ball.justBounced = false;
+
+        state.gravity = params.gravity;
+        state.gravityBoost = params.gravityBoost;
+
+        scoreEl.textContent = "0";
+      }
+
+      function onKey(e, down) {
+        if (e.key === "ArrowLeft") { state.left = down; e.preventDefault(); }
+        if (e.key === "ArrowRight") { state.right = down; e.preventDefault(); }
+
+        if (down && (e.key === " " || e.code === "Space")) {
+          if (state.gameOver) resetGame();
+          e.preventDefault();
+        }
+
+        if (down && (e.key === "p" || e.key === "P")) {
+          if (!state.gameOver) {
+            state.paused = !state.paused;
+            statusEl.textContent = state.paused ? "Paused — press P to resume" : "Keep it up!";
+          }
+          e.preventDefault();
+        }
+      }
+
+      window.addEventListener("keydown", (e) => onKey(e, true));
+      window.addEventListener("keyup", (e) => onKey(e, false));
+
+      difficultySel.addEventListener("change", () => setDifficulty(difficultySel.value));
+      themeSel.addEventListener("change", () => setTheme(themeSel.value));
+      accentPicker.addEventListener("input", () => setAccent(accentPicker.value));
+      resetBtn.addEventListener("click", resetGame);
+      clearBestBtn.addEventListener("click", () => {
+        localStorage.removeItem(BEST_KEY);
+        state.best = 0;
+        bestEl.textContent = "0";
+        statusEl.textContent = "Best score cleared";
+        setTimeout(() => {
+          if (!state.gameOver && !state.paused) statusEl.textContent = "Keep it up!";
+        }, 900);
+      });
+
+      function circleRectCollision(cx, cy, r, rx, ry, rw, rh) {
+        const closestX = clamp(cx, rx, rx + rw);
+        const closestY = clamp(cy, ry, ry + rh);
+        const dx = cx - closestX;
+        const dy = cy - closestY;
+        return (dx * dx + dy * dy) <= (r * r);
+      }
+
+      function update(dt) {
+        if (!state.running || state.paused) return;
+
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+
+        let dir = 0;
+        if (state.left) dir -= 1;
+        if (state.right) dir += 1;
+        paddle.x += dir * paddle.speed * dt;
+        paddle.x = clamp(paddle.x, 10, w - paddle.w - 10);
+
+        ball.vy += state.gravity * dt;
+        ball.x += ball.vx * dt;
+        ball.y += ball.vy * dt;
+
+        if (ball.x - ball.r < 10) {
+          ball.x = 10 + ball.r;
+          ball.vx *= -1;
+        } else if (ball.x + ball.r > w - 10) {
+          ball.x = w - 10 - ball.r;
+          ball.vx *= -1;
+        }
+
+        if (ball.y - ball.r < 10) {
+          ball.y = 10 + ball.r;
+          ball.vy = Math.abs(ball.vy) * 0.35;
+        }
+
+        const hit = circleRectCollision(ball.x, ball.y, ball.r, paddle.x, paddle.y, paddle.w, paddle.h);
+        if (hit && ball.vy > 0 && !ball.justBounced) {
+          ball.y = paddle.y - ball.r - 0.5;
+
+          const rel = ((ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2));
+          const influence = clamp(rel, -1, 1);
+
+          const up = params.baseUp + state.score * params.upBoostPerHit;
+          ball.vy = -up;
+
+          ball.vx += influence * params.vxInfluence;
+          ball.vx = clamp(ball.vx, -params.maxVx, params.maxVx);
+
+          state.score += 1;
+          scoreEl.textContent = String(state.score);
+
+          if (state.score > state.best) {
+            state.best = state.score;
+            localStorage.setItem(BEST_KEY, String(state.best));
+            bestEl.textContent = String(state.best);
+          }
+
+          state.gravity += state.gravityBoost;
+          ball.justBounced = true;
+        }
+
+        if (ball.y < paddle.y - ball.r - 6) ball.justBounced = false;
+
+        if (ball.y - ball.r > h) {
+          state.gameOver = true;
+          state.running = false;
+          statusEl.textContent = "Game Over — press Space or click Restart";
+        }
+      }
+
+      function getCSSVar(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      }
+
+      function draw() {
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+
+        const border = getCSSVar("--field");
+        const accent = getCSSVar("--accent");
+        const text = getCSSVar("--text");
+
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.strokeStyle = border || "rgba(255,255,255,0.10)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(10, 10, w - 20, h - 20);
+
+        ctx.fillStyle = accent || "rgba(255,255,255,0.92)";
+        roundRect(ctx, paddle.x, paddle.y, paddle.w, paddle.h, 10, true, false);
+
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (state.paused && !state.gameOver) {
+          ctx.fillStyle = "rgba(0,0,0,0.45)";
+          ctx.fillRect(0, 0, w, h);
+
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = text || "rgba(255,255,255,0.95)";
+          ctx.font = "700 32px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+          ctx.fillText("Paused", w / 2, h / 2 - 16);
+
+          ctx.font = "500 14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+          ctx.fillText("Press P to resume", w / 2, h / 2 + 20);
+        }
+
+        if (state.gameOver) {
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(0, 0, w, h);
+
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = text || "rgba(255,255,255,0.95)";
+          ctx.font = "700 34px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+          ctx.fillText("Game Over", w / 2, h / 2 - 24);
+
+          ctx.font = "500 16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+          ctx.fillStyle = "rgba(255,255,255,0.78)";
+          ctx.fillText("Press Space to restart", w / 2, h / 2 + 18);
+        }
+      }
+
+      function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+        const rr = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + rr, y);
+        ctx.arcTo(x + w, y, x + w, y + h, rr);
+        ctx.arcTo(x + w, y + h, x, y + h, rr);
+        ctx.arcTo(x, y + h, x, y, rr);
+        ctx.arcTo(x, y, x + w, y, rr);
+        ctx.closePath();
+        if (fill) ctx.fill();
+        if (stroke) ctx.stroke();
+      }
+
+      function loop(t) {
+        const dt = Math.min(0.033, (t - state.lastT) / 1000);
+        state.lastT = t;
+
+        update(dt);
+        draw();
+
+        requestAnimationFrame(loop);
+      }
+
+      function onResize() {
+        setupHiDPI();
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        paddle.y = h - 42;
+        paddle.x = clamp(paddle.x, 10, w - paddle.w - 10);
+        ball.x = clamp(ball.x, 10 + ball.r, w - 10 - ball.r);
+      }
+      window.addEventListener("resize", onResize);
+
+      setupHiDPI();
+      params = DIFFICULTY[state.settings.difficulty] || DIFFICULTY.medium;
+
+      const themeDefaultAccent = THEMES[state.settings.theme]?.defaultAccent || "#ffffff";
+      if (!state.settings.accent) {
+        state.settings.accent = themeDefaultAccent;
+        accentPicker.value = themeDefaultAccent;
+        applyAccent(themeDefaultAccent);
+        saveSettings(state.settings);
+      }
+
+      resetGame();
+      requestAnimationFrame((t) => { state.lastT = t; loop(t); });
+    })();
+  </script>
+</body>
+</html>
